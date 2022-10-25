@@ -13,7 +13,7 @@ common golang lib tools
 ### date tools
 ```
 //golang origin date functions drive me crazy
-//UnixMsec2Date and Date2UnixMsec are better
+//UnixMsec2Date and Date2UnixMsec are better ones O(∩_∩)O
 
 showTime := libtools.UnixMsec2Date(1664182378999, "Y-m-d H:i:s")
 fmt.Println("showTime:", showTime)
