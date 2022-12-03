@@ -606,3 +606,8 @@ func CompareEquals(val1, val2 float64) bool {
 
 	return value1 == value2
 }
+
+func Float64RoundDecimal2(val float64) float64 {
+	ret, _ := decimal.NewFromFloat(val).Round(2).Float64()
+	return ret
+}
