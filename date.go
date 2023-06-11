@@ -590,6 +590,16 @@ func Date2UnixMsec(dateStr, layout string) int64 {
 	return parse.UnixNano() / 1000000
 }
 
+func Int642Time(t int64) time.Time {
+	return time.Unix(t/1000, 0)
+}
+
+func GetMonthLastDay(t time.Time) int {
+	lastTime := t.AddDate(0, 1, -1)
+	_, _, d := lastTime.Date()
+	return d
+}
+
 // }}}
 
 func ExcelConvertToFormatDay(excelDaysString string) string {
