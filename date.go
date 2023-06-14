@@ -91,6 +91,11 @@ func RFC3339TimeTransfer(datetime string) int64 {
 	return timestamp
 }
 
+func RFC3339TransferDate(str string) string {
+	t1, _ := time.Parse(time.RFC3339, str)
+	return UnixMsec2Date(t1.UnixMilli(), "Y-m-d")
+}
+
 func MDateMHSLocalDate(timestamp int64) string {
 	tmp := timestamp / 1000
 
@@ -280,7 +285,8 @@ func NaturalDay(offset int64) (um int64) {
 	return
 }
 
-/**
+/*
+*
 基于指定时间的偏移量
 */
 func BaseDayOffset(baseDay int64, offset int64) (um int64) {
