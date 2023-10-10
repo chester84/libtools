@@ -641,6 +641,21 @@ func GetMonthDay() (string, string) {
 }
 
 /**
+ * @Description 获得当前月的初始和结束日期
+ **/
+func GetTheMonthDay(date string) (string, string) {
+	now := DateTime2Time(date)
+	currentYear, currentMonth, _ := now.Date()
+	currentLocation := now.Location()
+
+	firstOfMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, currentLocation)
+	lastOfMonth := firstOfMonth.AddDate(0, 1, -1)
+	f := firstOfMonth.Unix()
+	l := lastOfMonth.Unix()
+	return time.Unix(f, 0).Format("2006-01-02") + " 00:00:00", time.Unix(l, 0).Format("2006-01-02") + " 23:59:59"
+}
+
+/**
  * @Description 获得当前周的初始和结束日期
  **/
 func GetWeekDay() (string, string) {
