@@ -742,3 +742,9 @@ func GetLastDateOfMonth(d time.Time) time.Time {
 func GetZeroTime(d time.Time) time.Time {
 	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location())
 }
+
+func DateTime2Time(date string) time.Time {
+	layout := "2006-01-02 15:04:05"
+	t, _ := time.Parse(layout, date)
+	return t
+}
