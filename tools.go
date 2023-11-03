@@ -305,6 +305,14 @@ func FixCountNum(in int) int {
 	return out
 }
 
+func AbsFloat64(num float64) float64 {
+	if num >= 0 {
+		return num
+	} else {
+		return -num
+	}
+}
+
 func AbsInt64(num int64) int64 {
 	if num >= 0 {
 		return num
