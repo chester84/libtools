@@ -709,6 +709,15 @@ func GetQuarterDay() (string, string) {
 // 参数为日期格式，如：2020-01-01
 func GetBetweenDates(sdate, edate string) []string {
 	d := []string{}
+
+	if sdate == "" || edate == "" {
+		return d
+	}
+
+	if sdate == edate {
+		return d
+	}
+
 	timeFormatTpl := "2006-01-02 15:04:05"
 	if len(timeFormatTpl) != len(sdate) {
 		timeFormatTpl = timeFormatTpl[0:len(sdate)]
