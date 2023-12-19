@@ -715,7 +715,7 @@ func GetBetweenDates(sdate, edate string) []string {
 	}
 
 	if sdate == edate {
-		return d
+		return []string{sdate}
 	}
 
 	timeFormatTpl := "2006-01-02 15:04:05"
