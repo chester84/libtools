@@ -182,3 +182,26 @@ func FileDownload(fileName, url string) (realFileName string, err error) {
 
 	return
 }
+
+func GetFileExtension(f multipart.File, h *multipart.FileHeader) (string, error) {
+	contentType := ""
+	fileContentType, err := GetFileContentType(f)
+	switch fileContentType {
+	case "image/jpeg":
+		contentType = "jpeg"
+	case "image/png":
+		contentType = "png"
+	case "image/gif":
+		contentType = "gif"
+	case "application/octet-stream":
+		sArr := strings.Split(h.Filename, ".")
+		contentType = sArr[len(sArr)-1]
+	case "application/zip":
+		sArr := strings.Split(h.Filename, ".")
+		contentType = sArr[len(sArr)-1]
+	case "application/pdf":
+		contentType = "pdf"
+	}
+
+	return contentType, err
+}
