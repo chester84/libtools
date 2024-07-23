@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
@@ -181,6 +182,34 @@ func FileDownload(fileName, url string) (realFileName string, err error) {
 	_, _ = io.Copy(f, res.Body)
 
 	return
+}
+
+func GetFileContentType(out multipart.File) (string, error) {
+	// 只需要前 512 个字节就可以了
+	buffer := make([]byte, 512)
+
+	_, err := out.Read(buffer)
+	if err != nil {
+		return "", err
+	}
+
+	contentType := http.DetectContentType(buffer)
+
+	return contentType, nil
+}
+
+func GetFileType(out multipart.File) (string, error) {
+	// 只需要前 512 个字节就可以了
+	buf := make([]byte, 512)
+
+	_, err := out.Read(buf)
+	if err != nil {
+		return "", err
+	}
+
+	t, err := filetype.Get(buf)
+
+	return t.MIME.Value, err
 }
 
 func GetFileExtension(f multipart.File, h *multipart.FileHeader) (string, error) {
