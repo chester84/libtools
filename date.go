@@ -3,6 +3,7 @@ package libtools
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -751,18 +752,18 @@ func GetBetweenDates(sdate, edate string) []string {
 	return d
 }
 
-//获取传入的时间所在月份的第一天，即某月第一天的0点。如传入time.Now(), 返回当前月份的第一天0点时间。
+// 获取传入的时间所在月份的第一天，即某月第一天的0点。如传入time.Now(), 返回当前月份的第一天0点时间。
 func GetFirstDateOfMonth(d time.Time) time.Time {
 	d = d.AddDate(0, 0, -d.Day()+1)
 	return GetZeroTime(d)
 }
 
-//获取传入的时间所在月份的最后一天，即某月最后一天的0点。如传入time.Now(), 返回当前月份的最后一天0点时间。
+// 获取传入的时间所在月份的最后一天，即某月最后一天的0点。如传入time.Now(), 返回当前月份的最后一天0点时间。
 func GetLastDateOfMonth(d time.Time) time.Time {
 	return GetFirstDateOfMonth(d).AddDate(0, 1, -1)
 }
 
-//获取某一天的0点时间
+// 获取某一天的0点时间
 func GetZeroTime(d time.Time) time.Time {
 	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location())
 }
@@ -771,4 +772,62 @@ func DateTime2Time(date string) time.Time {
 	layout := "2006-01-02 15:04:05"
 	t, _ := time.Parse(layout, date)
 	return t
+}
+
+// GetMonthsBetweenDates 返回两个日期之间的月份 (格式为 YYYY-MM)
+func GetMonthsBetweenDates(startDateStr, endDateStr string) ([]string, error) {
+	// 正则表达式匹配不同日期格式
+	yearOnlyPattern := regexp.MustCompile(`^\d{4}$`)
+	yearMonthPattern := regexp.MustCompile(`^\d{4}-\d{2}$`)
+	yearMonthDayPattern := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+	var startDate, endDate time.Time
+	var err error
+
+	// 解析开始日期
+	switch {
+	case yearMonthDayPattern.MatchString(startDateStr):
+		startDate, err = time.Parse("2006-01-02", startDateStr)
+	case yearMonthPattern.MatchString(startDateStr):
+		startDate, err = time.Parse("2006-01", startDateStr)
+	case yearOnlyPattern.MatchString(startDateStr):
+		startDate, err = time.Parse("2006", startDateStr)
+	default:
+		return nil, errors.New("开始日期格式无效，应为 YYYY, YYYY-MM, 或 YYYY-MM-DD")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("解析开始日期失败: %v", err)
+	}
+
+	// 解析结束日期
+	switch {
+	case yearMonthDayPattern.MatchString(endDateStr):
+		endDate, err = time.Parse("2006-01-02", endDateStr)
+	case yearMonthPattern.MatchString(endDateStr):
+		endDate, err = time.Parse("2006-01", endDateStr)
+	case yearOnlyPattern.MatchString(endDateStr):
+		endDate, err = time.Parse("2006", endDateStr)
+	default:
+		return nil, errors.New("结束日期格式无效，应为 YYYY, YYYY-MM, 或 YYYY-MM-DD")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("解析结束日期失败: %v", err)
+	}
+
+	// 校验日期顺序
+	if startDate.After(endDate) {
+		return nil, errors.New("开始日期不能晚于结束日期")
+	}
+
+	// 修正开始和结束日期为当月的第一天
+	startDate = time.Date(startDate.Year(), startDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+	endDate = time.Date(endDate.Year(), endDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	// 生成日期范围内的月份
+	var months []string
+	for d := startDate; !d.After(endDate); d = d.AddDate(0, 1, 0) {
+		months = append(months, d.Format("2006-01"))
+	}
+
+	return months, nil
 }
