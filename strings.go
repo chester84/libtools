@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net/http"
+	"os"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -207,11 +210,11 @@ func JSONMarshal(v interface{}) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-//将slice 转化成字符串
-//[]int{1, 2, 3, 4, 5}  => 1,2,3,4,5 或
-//[]string{"1", "2", "3", "4", "5"}  => 1,2,3,4,5
-//"AAA bbb" 转为  AAA,bbb
-//其他类型返回空字符串
+// 将slice 转化成字符串
+// []int{1, 2, 3, 4, 5}  => 1,2,3,4,5 或
+// []string{"1", "2", "3", "4", "5"}  => 1,2,3,4,5
+// "AAA bbb" 转为  AAA,bbb
+// 其他类型返回空字符串
 func ArrayToString(a interface{}, delim string) (newStr string) {
 	vtype := reflect.TypeOf(a).String()
 	if vtype == "[]int" || vtype == "[]int64" {
@@ -398,8 +401,10 @@ func SecretKeyMask(secretKey string) (str string) {
 	return
 }
 
-/**
-  13:23
+/*
+*
+
+	13:23
 */
 func ConvertTime2Secs(str string) int {
 	arr := strings.Split(str, ":")
@@ -610,4 +615,29 @@ func CompareEquals(val1, val2 float64) bool {
 func Float64RoundDecimal2(val float64) float64 {
 	ret, _ := decimal.NewFromFloat(val).Round(2).Float64()
 	return ret
+}
+
+func DownloadFile(url string, filepath string) error {
+	// 发送 GET 请求
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download file: %s, status code: %d", url, resp.StatusCode)
+	}
+
+	// 创建文件
+	out, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// 将响应数据写入文件
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
