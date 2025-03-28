@@ -1,8 +1,11 @@
 package libtools
 
 import (
+	"crypto/tls"
 	"fmt"
+	"log"
 	"math/rand"
+	"net/smtp"
 	"os"
 	"os/signal"
 	"reflect"
@@ -15,6 +18,7 @@ import (
 
 	"github.com/beego/beego/v2/core/config"
 	"github.com/beego/beego/v2/core/logs"
+	"github.com/jordan-wright/email"
 	"golang.org/x/text/message"
 )
 
@@ -57,7 +61,7 @@ func GenerateRandom64(min, max int64) int64 {
 	return randNum
 }
 
-//! 手机验证在4-8位之间
+// ! 手机验证在4-8位之间
 func GenerateMobileCaptcha(length int) string {
 	if length < 4 || length > 8 {
 		return ""
@@ -190,7 +194,7 @@ func ToSlice(arr interface{}) ([]interface{}, error) {
 	return ret, nil
 }
 
-//MobileFormat 去除空格，并且不能加拨0或62
+// MobileFormat 去除空格，并且不能加拨0或62
 func MobileFormat(mobile string) string {
 	// 去除空格
 	str := strings.Replace(mobile, " ", "", -1)
@@ -396,7 +400,7 @@ func DivideRedPacket(count, amount int64) {
 	fmt.Printf("总和 %d分\n", sum)
 }
 
-//二倍均值算法,count剩余个数,amount剩余金额
+// 二倍均值算法,count剩余个数,amount剩余金额
 func DoubleAverage(count, amount int64) int64 {
 	//最小钱
 	min := int64(1)
@@ -417,4 +421,70 @@ func DoubleAverage(count, amount int64) int64 {
 	//加min是为了避免出现0值,上面也减去了min
 	x := rand.Int63n(avg2) + min
 	return x
+}
+
+// SendEmail 发送邮件的工具函数
+// 参数说明：
+// - from: 发件人邮箱地址（如 "pacificleo@qq.com"）
+// - password: 邮箱授权码或登录密码
+// - to: 收件人邮箱列表
+// - subject: 邮件主题
+// - body: 邮件正文（纯文本）
+// - attachments: 附件文件路径列表
+// - smtpServer: SMTP 服务器地址（例如 "smtp.qq.com"）
+// - smtpPort: SMTP 服务器端口（例如 "465"）
+// - insecure: 是否跳过 TLS 证书校验
+
+/*
+	   用法:
+
+		date := tools.YesterdayDate()
+		// 构造附件列表
+		attachments := []string{
+			"/tmp/everyday-statistic-" + date + ".xlsx",
+			"/tmp/everyday-gifts-statistic-" + date + ".xlsx",
+		}
+		subject := "每日数据统计-" + date
+		body := "请看附件"
+		from := "pacificleo@qq.com"
+		password := "ychkafoumwdhcbbc" // 请确保妥善保存，不要硬编码在生产代码中
+		to := []string{"pacificleo@qq.com", "226634246@qq.com", "yaoyao9434@163.com", "yuyiyue123@sina.com"}
+		smtpServer := "smtp.qq.com"
+		smtpPort := "465"
+
+		err := emailutil.SendEmail(from, password, to, subject, body, attachments, smtpServer, smtpPort, true)
+		if err != nil {
+			log.Fatal(err)
+		}
+*/
+func SendEmail(from, password string, to []string, subject, body string, attachments []string, smtpServer, smtpPort string, insecure bool) error {
+	e := email.NewEmail()
+	// 设置发件人地址，注意要加上尖括号
+	e.From = fmt.Sprintf("<%s>", from)
+	e.To = to
+	e.Subject = subject
+	e.Text = []byte(body)
+
+	// 添加附件
+	for _, file := range attachments {
+		if _, err := e.AttachFile(file); err != nil {
+			return fmt.Errorf("attachment error (%s): %w", file, err)
+		}
+	}
+
+	// 使用 PlainAuth 认证
+	auth := smtp.PlainAuth("", from, password, smtpServer)
+
+	// TLS 配置
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: insecure,
+		ServerName:         smtpServer,
+	}
+
+	// 发送邮件（使用 TLS 连接）
+	if err := e.SendWithTLS(smtpServer+":"+smtpPort, auth, tlsConfig); err != nil {
+		return err
+	}
+	log.Println("Email sent successfully!")
+	return nil
 }
