@@ -1,6 +1,7 @@
 package libtools
 
 import (
+	"archive/zip"
 	"crypto/md5"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/beego/beego/v2/core/logs"
@@ -233,4 +235,52 @@ func GetFileExtension(f multipart.File, h *multipart.FileHeader) (string, error)
 	}
 
 	return contentType, err
+}
+
+// ZipDirectory 将整个目录压缩成一个 zip 文件
+func ZipDirectory(sourceDir, zipFileName string) error {
+	zipFile, err := os.Create(zipFileName)
+	if err != nil {
+		return fmt.Errorf("创建 ZIP 文件失败: %v", err)
+	}
+	defer zipFile.Close()
+
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
+
+	err = filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// 计算相对路径，保证 ZIP 内的目录结构
+		relPath, err := filepath.Rel(filepath.Dir(sourceDir), path)
+		if err != nil {
+			return err
+		}
+
+		// 如果是目录，直接返回，不创建文件
+		if info.IsDir() {
+			return nil
+		}
+
+		// 打开文件
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		// 创建 ZIP 文件中的项
+		zipFileWriter, err := zipWriter.Create(relPath)
+		if err != nil {
+			return err
+		}
+
+		// 复制文件内容
+		_, err = io.Copy(zipFileWriter, file)
+		return err
+	})
+
+	return err
 }
