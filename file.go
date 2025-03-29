@@ -253,31 +253,34 @@ func ZipDirectory(sourceDir, zipFileName string) error {
 			return err
 		}
 
-		// 计算相对路径，保证 ZIP 内的目录结构
 		relPath, err := filepath.Rel(filepath.Dir(sourceDir), path)
 		if err != nil {
 			return err
 		}
 
-		// 如果是目录，直接返回，不创建文件
 		if info.IsDir() {
 			return nil
 		}
 
-		// 打开文件
 		file, err := os.Open(path)
 		if err != nil {
 			return err
 		}
 		defer file.Close()
 
-		// 创建 ZIP 文件中的项
-		zipFileWriter, err := zipWriter.Create(relPath)
+		// **使用 CreateHeader 以支持压缩**
+		header := &zip.FileHeader{
+			Name:   relPath,
+			Method: zip.Deflate, // 启用压缩
+		}
+		header.SetModTime(info.ModTime()) // 保留原文件时间戳
+		header.SetMode(info.Mode())       // 保留原文件权限
+
+		zipFileWriter, err := zipWriter.CreateHeader(header)
 		if err != nil {
 			return err
 		}
 
-		// 复制文件内容
 		_, err = io.Copy(zipFileWriter, file)
 		return err
 	})
