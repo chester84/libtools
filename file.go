@@ -284,3 +284,61 @@ func ZipDirectory(sourceDir, zipFileName string) error {
 
 	return err
 }
+
+// UnzipAndExtract 解压 zip 文件到指定目录（为空则自动创建一个临时目录）
+// 返回：解压路径、错误
+func UnzipAndExtract(srcZipPath string, destDir string) (string, error) {
+	// 如果未指定目标目录，自动创建临时目录
+	if destDir == "" {
+		destDir = filepath.Join(os.TempDir(), strings.TrimSuffix(filepath.Base(srcZipPath), ".zip"))
+	}
+
+	r, err := zip.OpenReader(srcZipPath)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		fpath := filepath.Join(destDir, f.Name)
+
+		// 防止 zip 滥用 ../ 造成目录穿越漏洞
+		if !strings.HasPrefix(fpath, filepath.Clean(destDir)+string(os.PathSeparator)) {
+			return "", fmt.Errorf("illegal file path: %s", fpath)
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
+				return "", err
+			}
+			continue
+		}
+
+		// 确保目录存在
+		if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+			return "", err
+		}
+
+		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return "", err
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			return "", err
+		}
+
+		_, err = io.Copy(outFile, rc)
+
+		outFile.Close()
+		rc.Close()
+
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return destDir, nil
+}
