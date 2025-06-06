@@ -23,7 +23,7 @@ const (
 	HttpApplicationFormEncoded ContentType = "application/x-www-form-urlencoded"
 )
 
-// HttpRequest 封装的 HTTP 请求函数，带默认超时 10 秒，允许覆盖超时参数
+// HttpRequest 封装的 HTTP 请求函数，带默认超时 45 秒，允许覆盖超时参数
 func HttpRequest(method, urlStr string, headers map[string]string, contentType ContentType, body interface{}, timeout ...time.Duration) ([]byte, int, error) {
 	var requestBody io.Reader
 	var contentTypeHeader string
@@ -35,7 +35,7 @@ func HttpRequest(method, urlStr string, headers map[string]string, contentType C
 	if len(timeout) > 0 {
 		clientTimeout = timeout[0] // 使用传入的超时时间
 	} else {
-		clientTimeout = 15 * time.Second // 默认 15 秒超时
+		clientTimeout = 45 * time.Second // 默认 45 秒超时
 	}
 
 	switch contentType {
