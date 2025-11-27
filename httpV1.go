@@ -21,6 +21,7 @@ const (
 	HttpApplicationJSON        ContentType = "application/json"
 	HttpMultipartForm          ContentType = "multipart/form-data"
 	HttpApplicationFormEncoded ContentType = "application/x-www-form-urlencoded"
+	HttpRawBody                ContentType = "raw" // 新增，用于手动构造 body
 )
 
 // HttpRequest 封装的 HTTP 请求函数，带默认超时 60 秒，允许覆盖超时参数
@@ -30,15 +31,14 @@ func HttpRequest(method, urlStr string, headers map[string]string, contentType C
 	var httpStatusCode int
 	var emptyBody []byte
 
-	// 如果用户没有传入超时参数，设置默认超时时间为 60 秒
-	var clientTimeout time.Duration
+	// 设置默认 60 秒超时
+	clientTimeout := 60 * time.Second
 	if len(timeout) > 0 {
-		clientTimeout = timeout[0] // 使用传入的超时时间
-	} else {
-		clientTimeout = 60 * time.Second // 默认 60 秒超时
+		clientTimeout = timeout[0]
 	}
 
 	switch contentType {
+
 	case HttpApplicationJSON:
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
@@ -48,6 +48,7 @@ func HttpRequest(method, urlStr string, headers map[string]string, contentType C
 		contentTypeHeader = string(HttpApplicationJSON)
 
 	case HttpMultipartForm:
+		// ⚠️ 仅适合 map 自动构建 multipart 的情况
 		var buffer bytes.Buffer
 		writer := multipart.NewWriter(&buffer)
 
@@ -56,31 +57,24 @@ func HttpRequest(method, urlStr string, headers map[string]string, contentType C
 			switch v := val.(type) {
 			case string:
 				_ = writer.WriteField(key, v)
-			case *os.File:
-				file, err := os.Open(v.Name())
-				if err != nil {
-					return nil, httpStatusCode, fmt.Errorf("could not open file: %v", err)
-				}
-				defer file.Close()
 
-				part, err := writer.CreateFormFile(key, v.Name())
+			case *os.File:
+				part, err := writer.CreateFormFile(key, filepath.Base(v.Name()))
 				if err != nil {
 					return nil, httpStatusCode, fmt.Errorf("could not create form file: %v", err)
 				}
-				_, err = io.Copy(part, file)
+
+				_, err = io.Copy(part, v)
 				if err != nil {
 					return nil, httpStatusCode, fmt.Errorf("could not copy file content: %v", err)
 				}
+
 			default:
 				return nil, httpStatusCode, fmt.Errorf("unsupported field type: %v", v)
 			}
 		}
 
-		err := writer.Close()
-		if err != nil {
-			return nil, httpStatusCode, fmt.Errorf("could not close writer: %v", err)
-		}
-
+		_ = writer.Close()
 		requestBody = &buffer
 		contentTypeHeader = writer.FormDataContentType()
 
@@ -93,41 +87,51 @@ func HttpRequest(method, urlStr string, headers map[string]string, contentType C
 		requestBody = strings.NewReader(formData.Encode())
 		contentTypeHeader = string(HttpApplicationFormEncoded)
 
+	case HttpRawBody:
+		// 🚀 这里 body 必须是 []byte 或 bytes.Buffer
+		switch v := body.(type) {
+		case []byte:
+			requestBody = bytes.NewReader(v)
+		case *bytes.Buffer:
+			requestBody = v
+		default:
+			return nil, httpStatusCode, fmt.Errorf("HttpRawBody only accepts []byte or *bytes.Buffer")
+		}
+
+		// Content-Type 由调用者自行设置，不能自动覆盖
+		contentTypeHeader = "" // 标记不自动设置
+
 	default:
 		return nil, httpStatusCode, fmt.Errorf("unsupported content type: %v", contentType)
 	}
 
-	// 创建 HTTP 请求
+	// ---------------------------
+	// 构建 request
+	// ---------------------------
 	req, err := http.NewRequest(method, urlStr, requestBody)
 	if err != nil {
 		return nil, httpStatusCode, fmt.Errorf("could not create http request: %v", err)
 	}
 
-	// 设置 Content-Type
-	req.Header.Set("Content-Type", contentTypeHeader)
-
-	// 设置自定义的 headers
-	for key, value := range headers {
-		req.Header.Set(key, value)
+	// 只有在非 RawBody 情况下，才自动设置 Content-Type
+	if contentTypeHeader != "" {
+		req.Header.Set("Content-Type", contentTypeHeader)
 	}
 
-	// 创建 HTTP 客户端，并设置超时时间
-	client := &http.Client{
-		Timeout: clientTimeout, // 使用默认或用户提供的超时时间
+	// 用户 Header 永远最后覆盖
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
-	// 发送 HTTP 请求
+	client := &http.Client{Timeout: clientTimeout}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, httpStatusCode, fmt.Errorf("could not send http request: %v", err)
 	}
 	defer resp.Body.Close()
 
-	respBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return emptyBody, httpStatusCode, err
-	}
-
+	respBody, err := io.ReadAll(resp.Body)
 	return respBody, resp.StatusCode, err
 }
 
