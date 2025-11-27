@@ -2,14 +2,15 @@ package libtools
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -29,7 +30,6 @@ func HttpRequest(method, urlStr string, headers map[string]string, contentType C
 	var requestBody io.Reader
 	var contentTypeHeader string
 	var httpStatusCode int
-	var emptyBody []byte
 
 	// 设置默认 60 秒超时
 	clientTimeout := 60 * time.Second
@@ -38,49 +38,73 @@ func HttpRequest(method, urlStr string, headers map[string]string, contentType C
 	}
 
 	switch contentType {
-
 	case HttpApplicationJSON:
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
-			return nil, httpStatusCode, fmt.Errorf("could not marshal json: %v", err)
+			return nil, httpStatusCode, fmt.Errorf("could not marshal json: %w", err)
 		}
 		requestBody = bytes.NewBuffer(jsonBody)
 		contentTypeHeader = string(HttpApplicationJSON)
 
 	case HttpMultipartForm:
-		// ⚠️ 仅适合 map 自动构建 multipart 的情况
+		// body 必须是 map[string]interface{}
+		data, ok := body.(map[string]interface{})
+		if !ok {
+			return nil, httpStatusCode, fmt.Errorf("HttpMultipartForm expects body of type map[string]interface{}")
+		}
+
 		var buffer bytes.Buffer
 		writer := multipart.NewWriter(&buffer)
 
-		data := body.(map[string]interface{})
 		for key, val := range data {
 			switch v := val.(type) {
 			case string:
-				_ = writer.WriteField(key, v)
-
-			case *os.File:
-				part, err := writer.CreateFormFile(key, filepath.Base(v.Name()))
-				if err != nil {
-					return nil, httpStatusCode, fmt.Errorf("could not create form file: %v", err)
+				if err := writer.WriteField(key, v); err != nil {
+					return nil, httpStatusCode, fmt.Errorf("could not write field %s: %w", key, err)
 				}
 
-				_, err = io.Copy(part, v)
+			case *os.File:
+				// 不在这里 Close()，由调用方负责关闭文件句柄
+				if _, err := v.Seek(0, io.SeekStart); err != nil {
+					// 非致命，但尽量回到文件头
+					// 如果 Seek 失败，仍然尝试读取
+				}
+				part, err := writer.CreateFormFile(key, filepath.Base(v.Name()))
 				if err != nil {
-					return nil, httpStatusCode, fmt.Errorf("could not copy file content: %v", err)
+					return nil, httpStatusCode, fmt.Errorf("could not create form file for %s: %w", key, err)
+				}
+				if _, err := io.Copy(part, v); err != nil {
+					return nil, httpStatusCode, fmt.Errorf("could not copy file content for %s: %w", key, err)
+				}
+
+			case io.Reader:
+				// 支持任意 io.Reader（例如 bytes.Buffer、bytes.Reader）
+				part, err := writer.CreateFormFile(key, key) // 如果没有文件名，用 key 作为占位名
+				if err != nil {
+					return nil, httpStatusCode, fmt.Errorf("could not create form file for reader %s: %w", key, err)
+				}
+				if _, err := io.Copy(part, v); err != nil {
+					return nil, httpStatusCode, fmt.Errorf("could not copy reader content for %s: %w", key, err)
 				}
 
 			default:
-				return nil, httpStatusCode, fmt.Errorf("unsupported field type: %v", v)
+				return nil, httpStatusCode, fmt.Errorf("unsupported field type for key %s: %T", key, v)
 			}
 		}
 
-		_ = writer.Close()
+		if err := writer.Close(); err != nil {
+			return nil, httpStatusCode, fmt.Errorf("could not close multipart writer: %w", err)
+		}
+
 		requestBody = &buffer
 		contentTypeHeader = writer.FormDataContentType()
 
 	case HttpApplicationFormEncoded:
 		formData := url.Values{}
-		data := body.(map[string]string)
+		data, ok := body.(map[string]string)
+		if !ok {
+			return nil, httpStatusCode, fmt.Errorf("HttpApplicationFormEncoded expects body of type map[string]string")
+		}
 		for key, val := range data {
 			formData.Set(key, val)
 		}
@@ -88,29 +112,27 @@ func HttpRequest(method, urlStr string, headers map[string]string, contentType C
 		contentTypeHeader = string(HttpApplicationFormEncoded)
 
 	case HttpRawBody:
-		// 🚀 这里 body 必须是 []byte 或 bytes.Buffer
+		// 支持 []byte, *bytes.Buffer, io.Reader
 		switch v := body.(type) {
 		case []byte:
 			requestBody = bytes.NewReader(v)
 		case *bytes.Buffer:
 			requestBody = v
+		case io.Reader:
+			requestBody = v
 		default:
-			return nil, httpStatusCode, fmt.Errorf("HttpRawBody only accepts []byte or *bytes.Buffer")
+			return nil, httpStatusCode, fmt.Errorf("HttpRawBody only accepts []byte, *bytes.Buffer or io.Reader, got %T", body)
 		}
-
-		// Content-Type 由调用者自行设置，不能自动覆盖
-		contentTypeHeader = "" // 标记不自动设置
+		// contentTypeHeader 留空，由调用者在 headers 中手动设置
 
 	default:
 		return nil, httpStatusCode, fmt.Errorf("unsupported content type: %v", contentType)
 	}
 
-	// ---------------------------
 	// 构建 request
-	// ---------------------------
 	req, err := http.NewRequest(method, urlStr, requestBody)
 	if err != nil {
-		return nil, httpStatusCode, fmt.Errorf("could not create http request: %v", err)
+		return nil, httpStatusCode, fmt.Errorf("could not create http request: %w", err)
 	}
 
 	// 只有在非 RawBody 情况下，才自动设置 Content-Type
@@ -118,21 +140,31 @@ func HttpRequest(method, urlStr string, headers map[string]string, contentType C
 		req.Header.Set("Content-Type", contentTypeHeader)
 	}
 
-	// 用户 Header 永远最后覆盖
+	// 用户 Header 覆盖（包含可能的 Content-Type）
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 
-	client := &http.Client{Timeout: clientTimeout}
+	// 使用 context 以便可扩展取消（可选）
+	ctx, cancel := context.WithTimeout(req.Context(), clientTimeout)
+	defer cancel()
+	req = req.WithContext(ctx)
 
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, httpStatusCode, fmt.Errorf("could not send http request: %v", err)
+		return nil, httpStatusCode, fmt.Errorf("could not send http request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	httpStatusCode = resp.StatusCode
+
 	respBody, err := io.ReadAll(resp.Body)
-	return respBody, resp.StatusCode, err
+	if err != nil {
+		return nil, httpStatusCode, fmt.Errorf("could not read response body: %w", err)
+	}
+
+	return respBody, httpStatusCode, nil
 }
 
 // 用法如下
